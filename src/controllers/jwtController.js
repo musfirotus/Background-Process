@@ -52,15 +52,20 @@ class LoginController {
     const salted = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salted);
 
-    // For Nodemailer
-      const msg = {
-        from: '"Express Email Sender" <nodemailer@mail.ac.id>', // sender address
-        to: `${email}`, // list of receivers
-        subject: "Hello ✔", // Subject line
-        text: "Hai, this is the first email!", // plain text body
-        html: "<b>Hello world?</b>", // html body
-      }
+    var readHTMLFile = function(path, callback) {
+      fs.readFile(path, {encoding: 'utf-8'}, function (err, html) {
+          if (err) {
+              throw err;
+              callback(err);
+          }
+          else {
+              callback(null, html);
+          }
+      });
+    };
+  
 
+    // For Nodemailer
     try {
       if (usernameExist) return res.status(404).json('Username already exists')
       else if (emailExist) return res.status(404).send('Email already exists')
@@ -68,9 +73,9 @@ class LoginController {
         const savedAuthor = await authors.create({
           username, password: hashedPassword, email
         });
-        cron.schedule('48 * * * *', () => {
+        cron.schedule('33 * * * *', () => {
           // create reusable transporter object using the default SMTP transport
-          let transporter = nodemailer.createTransport({
+          const transporter = nodemailer.createTransport({
             host: "smtp.mailtrap.io",
             port: 2525,
             secure: false,
@@ -79,21 +84,41 @@ class LoginController {
               pass: "a4642864c658c4"
             }
           });
-          transporter.sendMail(msg, function(error, info){
-            if (error) {
-              console.log(error);
-            } else {
-              console.log('Email sent: ' + info.response);
-              response.data = {
-                "Username": savedAuthor.username,
-                "Salted Password": savedAuthor.password,
-                "Email": savedAuthor.email,
-                "Message Sent": info.messageId
-              };
-              response.status = true;
-              response.message = "Berhasil register! Silakan cek email Anda!"
-              res.status(201).json(response);
+          readHTMLFile(__dirname + '../../email.html', function(err, html) {
+            const template = handlebars.compile(html);
+            const replacements = {
+                 username: "John Doe"
+            };
+            const htmlToSend = template(replacements);
+            const msg = {
+              from: '"Express Email Sender" <nodemailer@mail.ac.id>', // sender address
+              to: `${email}`, // list of receivers
+              subject: "Konfirmasi Registrasi ✔", // Subject line
+              // text: "", // plain text body
+              html: htmlToSend, // html body
+              attachments: [
+                {
+                  filename: 'test.txt',
+                  path: __dirname + '../../../test.txt' // stream this file
+                }
+              ]
             }
+            transporter.sendMail(msg, function(error, info){
+              if (error) {
+                console.log(error);
+              } else {
+                console.log('Email sent: ' + info.response);
+                response.data = {
+                  "Username": savedAuthor.username,
+                  "Salted Password": savedAuthor.password,
+                  "Email": savedAuthor.email,
+                  "Message Sent": info.messageId
+                };
+                response.status = true;
+                response.message = "Berhasil register! Silakan cek email Anda!"
+                res.status(201).json(response);
+              }
+            });
           });
         });
       }
